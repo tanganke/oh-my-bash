@@ -243,7 +243,7 @@ function _omb_log_note      { printf "${_omb_term_underline}${_omb_term_bold}${_
 #
 function seek_confirmation {
   printf "\\n${_omb_term_bold}%s${_omb_term_reset}" "$@"
-  read -p " (y/n) " -n 1
+  read -rp " (y/n) " -n 1
   printf "\\n"
 }
 
@@ -309,6 +309,7 @@ function _omb_util_unload {
 }
 
 _omb_util_original_PS1=$PS1
+# shellcheck disable=SC2016
 _omb_util_unload_hook+=('PS1=$_omb_util_original_PS1')
 
 _omb_util_prompt_command=()
@@ -364,6 +365,15 @@ function _omb_util_add_prompt_command {
   fi
 }
 
+## @fn _omb_util_split array str [sep]
+function _omb_util_split {
+  local __set=$- IFS=${3:-$' \t\n'}
+  set -f
+  eval -- "$1=(\$2)"
+  [[ $__set == *f* ]] || set +f
+  return 0
+}
+
 function _omb_util_glob_expand {
   local __set=$- __shopt __gignore=$GLOBIGNORE
   _omb_util_get_shopt failglob nullglob extglob
@@ -400,6 +410,30 @@ function _omb_util_alias {
     return 2
   esac
   alias -- "$1"
+}
+
+function _omb_util_alias_delayed__init {
+  local _omb_name=$1 _omb_init=${FUNCNAME[1]}
+  local _omb_command=$_omb_name
+  "_omb_util_alias_select_$_omb_name"
+
+  if [[ ! $_omb_command || $_omb_command == "$_omb_name" ]]; then
+    unalias "$_omb_name"
+  else
+    alias "$_omb_name=$_omb_command"
+  fi || return 1
+
+  eval -- "function $_omb_init { command ${_omb_command:-$_omb_name} \"\$@\"; }" && "$_omb_init" "${@:2}"
+}
+function _omb_util_alias_delayed {
+  local name=$1 opts=${2-}
+  local func=_omb_util_alias_init_$name
+  eval -- "function $func { _omb_util_alias_delayed__init $name \"\$@\"; }"
+  if [[ :$opts: == *:force:* ]]; then
+    alias "$name=$func"
+  else
+    _omb_util_alias "$name=$func"
+  fi
 }
 
 function _omb_util_mktemp {
